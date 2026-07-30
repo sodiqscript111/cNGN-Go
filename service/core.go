@@ -5,9 +5,9 @@ import (
 	"github.com/theobiabo/cNGN-Go/error"
 )
 
-type sendFunc func(method, path string, query map[string]string, body interface{}, result interface{}) *error.Error
+type sendFunc func(method, path string, query map[string]string, body any, result any) *error.Error
 
-func sendRequest[T any](send sendFunc, method, path string, query map[string]string, body interface{}) (*envelope.Response[T], *error.Error) {
+func sendRequest[T any](send sendFunc, method, path string, query map[string]string, body any) (*envelope.Response[T], *error.Error) {
 	result := &envelope.Response[T]{}
 	err := send(method, path, query, body, result)
 	if err != nil {
@@ -16,7 +16,7 @@ func sendRequest[T any](send sendFunc, method, path string, query map[string]str
 	return result, nil
 }
 
-func sendJSON[T any](send sendFunc, method, path string, query map[string]string, body interface{}) (T, *error.Error) {
+func sendJSON[T any](send sendFunc, method, path string, query map[string]string, body any) (T, *error.Error) {
 	var result T
 	err := send(method, path, query, body, &result)
 	if err != nil {

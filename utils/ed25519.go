@@ -58,18 +58,18 @@ func Ed25519DecryptWithPrivateKey(privateKey, encryptedData string) (string, *cn
 }
 
 func parseOpenSSHPrivateKey(privateKey string) ([64]byte, *cngnErr.Error) {
-	lines := strings.SplitN(privateKey, "\n", 2)
-	if len(lines) < 2 {
+	header, rest, ok := strings.Cut(privateKey, "\n")
+	if !ok {
 		return [64]byte{}, cngnErr.NewInvalidEncryptedPayloadError("private key must be an OpenSSH Ed25519 key")
 	}
 
-	header := strings.TrimSpace(lines[0])
+	header = strings.TrimSpace(header)
 	if header != "-----BEGIN OPENSSH PRIVATE KEY-----" {
 		return [64]byte{}, cngnErr.NewInvalidEncryptedPayloadError("private key must be an OpenSSH Ed25519 key")
 	}
 
 	bodyBuilder := strings.Builder{}
-	for _, line := range strings.Split(lines[1], "\n") {
+	for _, line := range strings.Split(rest, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "-----END OPENSSH PRIVATE KEY-----" {
 			break

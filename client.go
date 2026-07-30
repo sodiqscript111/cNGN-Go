@@ -69,7 +69,7 @@ func FromEnv() (*Client, *cngnErr.Error) {
 	return New(authToken).WithSecurity(encryptionKey, privateKey), nil
 }
 
-func (c *Client) Send(method, path string, query map[string]string, body interface{}, result interface{}) *cngnErr.Error {
+func (c *Client) Send(method, path string, query map[string]string, body any, result any) *cngnErr.Error {
 	reqURL := c.baseURL + path
 
 	var reqBody []byte
@@ -129,7 +129,7 @@ func (c *Client) Send(method, path string, query map[string]string, body interfa
 		return cngnErr.NewApiError(uint16(resp.StatusCode), kind, field, apiMsg)
 	}
 
-	responseValue := make(map[string]interface{})
+	responseValue := make(map[string]any)
 	if jsonErr := json.Unmarshal(respBytes, &responseValue); jsonErr != nil {
 		return cngnErr.NewParseError(jsonErr)
 	}
@@ -140,12 +140,12 @@ func (c *Client) Send(method, path string, query map[string]string, body interfa
 			if decryptErr != nil {
 				return decryptErr
 			}
-			var decryptedData map[string]interface{}
+			var decryptedData map[string]any
 			if json.Unmarshal([]byte(decrypted), &decryptedData) == nil {
 				if innerData, ok := decryptedData["data"]; ok {
 					responseValue["data"] = innerData
 				} else {
-					var rawData interface{}
+					var rawData any
 					if json.Unmarshal([]byte(decrypted), &rawData) == nil {
 						responseValue["data"] = rawData
 					}
@@ -167,7 +167,7 @@ func (c *Client) Send(method, path string, query map[string]string, body interfa
 	return nil
 }
 
-func SendRequest[T any](client *Client, method, path string, query map[string]string, body interface{}) (*envelope.Response[T], *cngnErr.Error) {
+func SendRequest[T any](client *Client, method, path string, query map[string]string, body any) (*envelope.Response[T], *cngnErr.Error) {
 	result := &envelope.Response[T]{}
 	err := client.Send(method, path, query, body, result)
 	if err != nil {

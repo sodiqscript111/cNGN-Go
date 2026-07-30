@@ -21,11 +21,6 @@ func (c *Client) Redemptions() *service.Redemptions {
 	return service.NewRedemptions(c.Send)
 }
 
-var _ = (*Client).WalletManager
-var _ = (*Client).Deposit
-var _ = (*Client).OnchainTransfer
-var _ = (*Client).Redemptions
-
 func NewClient(authToken string) *Client {
 	return New(authToken)
 }

@@ -7,7 +7,7 @@ type Response[T any] struct {
 }
 
 type ErrorEnvelope struct {
-	Status  interface{} `json:"status"`
+	Status  any `json:"status"`
 	Message string      `json:"message"`
 }
 
@@ -98,7 +98,7 @@ type EncryptedPayload struct {
 	IV      string `json:"iv"`
 }
 
-type JsonResponse = Response[interface{}]
+type JsonResponse = Response[any]
 
 type BalanceResponse = Response[[]Balance]
 type TransactionResponse = Response[Transaction]
