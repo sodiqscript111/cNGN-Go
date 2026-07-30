@@ -1,0 +1,177 @@
+package cngn
+
+import (
+	"bytes"
+	"encoding/json"
+	"io"
+	"net/http"
+	"os"
+	"strings"
+
+	"github.com/joho/godotenv"
+
+	"github.com/theobiabo/cNGN-Go/envelope"
+	cngnErr "github.com/theobiabo/cNGN-Go/error"
+	"github.com/theobiabo/cNGN-Go/utils"
+)
+
+const BaseURL = "https://api.cngn.co/v1/api"
+
+type Client struct {
+	authToken     string
+	baseURL       string
+	http          *http.Client
+	encryptionKey string
+	privateKey    string
+	hasSecurity   bool
+}
+
+func New(authToken string) *Client {
+	return WithBaseURL(authToken, BaseURL)
+}
+
+func WithBaseURL(authToken, baseURL string) *Client {
+	return &Client{
+		authToken: authToken,
+		baseURL:   strings.TrimRight(baseURL, "/"),
+		http:      &http.Client{},
+	}
+}
+
+func (c *Client) WithSecurity(encryptionKey, privateKey string) *Client {
+	c.encryptionKey = encryptionKey
+	c.privateKey = privateKey
+	c.hasSecurity = true
+	return c
+}
+
+func FromEnv() (*Client, *cngnErr.Error) {
+	godotenv.Load()
+
+	authToken := os.Getenv("CNGN_KEY")
+	if authToken == "" {
+		return nil, cngnErr.NewConfigurationError("CNGN_KEY is not set")
+	}
+
+	encryptionKey := os.Getenv("CNGN_ENCRYPTION_KEY")
+	if encryptionKey == "" {
+		return nil, cngnErr.NewConfigurationError("CNGN_ENCRYPTION_KEY is not set")
+	}
+
+	privateKey := os.Getenv("CNGN_PRIVATE_KEY")
+	if privateKey == "" {
+		privateKey = os.Getenv("CNGN_SSH_PRIVATE_KEY")
+	}
+	if privateKey == "" {
+		return nil, cngnErr.NewConfigurationError("CNGN_PRIVATE_KEY or CNGN_SSH_PRIVATE_KEY is not set")
+	}
+
+	return New(authToken).WithSecurity(encryptionKey, privateKey), nil
+}
+
+func (c *Client) Send(method, path string, query map[string]string, body interface{}, result interface{}) *cngnErr.Error {
+	reqURL := c.baseURL + path
+
+	var reqBody []byte
+	if body != nil {
+		var jsonErr error
+		reqBody, jsonErr = json.Marshal(body)
+		if jsonErr != nil {
+			return cngnErr.NewParseError(jsonErr)
+		}
+
+		if c.hasSecurity && c.encryptionKey != "" {
+			encrypted, cryptErr := utils.AESEncrypt(string(reqBody), c.encryptionKey)
+			if cryptErr != nil {
+				return cryptErr
+			}
+			reqBody, jsonErr = json.Marshal(encrypted)
+			if jsonErr != nil {
+				return cngnErr.NewParseError(jsonErr)
+			}
+		}
+	}
+
+	req, reqErr := http.NewRequest(method, reqURL, bytes.NewReader(reqBody))
+	if reqErr != nil {
+		return cngnErr.NewNetworkError(reqErr)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.authToken)
+
+	if query != nil {
+		q := req.URL.Query()
+		for k, v := range query {
+			q.Set(k, v)
+		}
+		req.URL.RawQuery = q.Encode()
+	}
+
+	resp, httpErr := c.http.Do(req)
+	if httpErr != nil {
+		return cngnErr.NewNetworkError(httpErr)
+	}
+	defer resp.Body.Close()
+
+	respBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return cngnErr.NewNetworkError(readErr)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		var errEnv envelope.ErrorEnvelope
+		msg := string(respBytes)
+		if json.Unmarshal(respBytes, &errEnv) == nil {
+			msg = errEnv.Message
+		}
+		kind, field, apiMsg := cngnErr.ClassifyApiError(uint16(resp.StatusCode), msg)
+		return cngnErr.NewApiError(uint16(resp.StatusCode), kind, field, apiMsg)
+	}
+
+	responseValue := make(map[string]interface{})
+	if jsonErr := json.Unmarshal(respBytes, &responseValue); jsonErr != nil {
+		return cngnErr.NewParseError(jsonErr)
+	}
+
+	if c.hasSecurity && c.privateKey != "" {
+		if dataStr, ok := responseValue["data"].(string); ok {
+			decrypted, decryptErr := utils.Ed25519DecryptWithPrivateKey(c.privateKey, dataStr)
+			if decryptErr != nil {
+				return decryptErr
+			}
+			var decryptedData map[string]interface{}
+			if json.Unmarshal([]byte(decrypted), &decryptedData) == nil {
+				if innerData, ok := decryptedData["data"]; ok {
+					responseValue["data"] = innerData
+				} else {
+					var rawData interface{}
+					if json.Unmarshal([]byte(decrypted), &rawData) == nil {
+						responseValue["data"] = rawData
+					}
+				}
+			}
+		}
+	}
+
+	if result != nil {
+		reJSON, jsonErr := json.Marshal(responseValue)
+		if jsonErr != nil {
+			return cngnErr.NewParseError(jsonErr)
+		}
+		if jsonErr := json.Unmarshal(reJSON, result); jsonErr != nil {
+			return cngnErr.NewParseError(jsonErr)
+		}
+	}
+
+	return nil
+}
+
+func SendRequest[T any](client *Client, method, path string, query map[string]string, body interface{}) (*envelope.Response[T], *cngnErr.Error) {
+	result := &envelope.Response[T]{}
+	err := client.Send(method, path, query, body, result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
