@@ -99,12 +99,3 @@ type EncryptedPayload struct {
 }
 
 type JsonResponse = Response[any]
-
-type BalanceResponse = Response[[]Balance]
-type TransactionResponse = Response[Transaction]
-type PaginatedTransactionResponse = Response[Paginated[Transaction]]
-type NetworkResponse = Response[[]Network]
-type WhitelistedAddressResponse = Response[[]WhitelistedAddress]
-type VirtualAccountResponse = Response[[]VirtualAccount]
-type AccountVerificationResponse = Response[AccountVerification]
-type BankResponse = Response[[]Bank]

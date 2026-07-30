@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"bytes"
 	"crypto/sha512"
 	"encoding/base64"
 	"fmt"
@@ -8,7 +9,7 @@ import (
 
 	"golang.org/x/crypto/nacl/box"
 
-	cngnErr "github.com/theobiabo/cNGN-Go/error"
+	cngnErr "github.com/sodiqscript111/cNGN-Go/error"
 )
 
 const (
@@ -83,21 +84,7 @@ func parseOpenSSHPrivateKey(privateKey string) ([64]byte, *cngnErr.Error) {
 	}
 
 	marker := []byte{0, 0, 0, 0x40}
-	markerStart := -1
-	for i := 0; i <= len(decoded)-len(marker); i++ {
-		match := true
-		for j := 0; j < len(marker); j++ {
-			if decoded[i+j] != marker[j] {
-				match = false
-				break
-			}
-		}
-		if match {
-			markerStart = i
-			break
-		}
-	}
-
+	markerStart := bytes.Index(decoded, marker)
 	if markerStart < 0 {
 		return [64]byte{}, cngnErr.NewInvalidEncryptedPayloadError("Ed25519 key data was not found")
 	}

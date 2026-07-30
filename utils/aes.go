@@ -8,8 +8,8 @@ import (
 	"encoding/base64"
 	"fmt"
 
-	"github.com/theobiabo/cNGN-Go/envelope"
-	cngnErr "github.com/theobiabo/cNGN-Go/error"
+	"github.com/sodiqscript111/cNGN-Go/envelope"
+	cngnErr "github.com/sodiqscript111/cNGN-Go/error"
 )
 
 const ivLength = 16
@@ -69,10 +69,10 @@ func AESDecrypt(payload *envelope.EncryptedPayload, key string) (string, *cngnEr
 	decrypted := make([]byte, len(encryptedContent))
 	mode.CryptBlocks(decrypted, encryptedContent)
 
-	var padErr string
+	var padErr *cngnErr.Error
 	decrypted, padErr = pkcs7Unpad(decrypted, aes.BlockSize)
-	if padErr != "" {
-		return "", cngnErr.NewCryptoError(fmt.Sprintf("AES decryption failed: %s", padErr))
+	if padErr != nil {
+		return "", padErr
 	}
 
 	return string(decrypted), nil
@@ -88,18 +88,18 @@ func pkcs7Pad(data []byte, blockSize int) []byte {
 	return padded
 }
 
-func pkcs7Unpad(data []byte, blockSize int) ([]byte, string) {
+func pkcs7Unpad(data []byte, blockSize int) ([]byte, *cngnErr.Error) {
 	if len(data) == 0 || len(data)%blockSize != 0 {
-		return nil, "invalid padding length"
+		return nil, cngnErr.NewCryptoError("invalid padding length")
 	}
 	padding := int(data[len(data)-1])
 	if padding == 0 || padding > blockSize {
-		return nil, "invalid padding value"
+		return nil, cngnErr.NewCryptoError("invalid padding value")
 	}
 	for i := len(data) - padding; i < len(data); i++ {
 		if int(data[i]) != padding {
-			return nil, "invalid padding"
+			return nil, cngnErr.NewCryptoError("invalid padding")
 		}
 	}
-	return data[:len(data)-padding], ""
+	return data[:len(data)-padding], nil
 }

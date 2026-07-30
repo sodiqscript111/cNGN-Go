@@ -6,13 +6,14 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/joho/godotenv"
 
-	"github.com/theobiabo/cNGN-Go/envelope"
-	cngnErr "github.com/theobiabo/cNGN-Go/error"
-	"github.com/theobiabo/cNGN-Go/utils"
+	"github.com/sodiqscript111/cNGN-Go/envelope"
+	cngnErr "github.com/sodiqscript111/cNGN-Go/error"
+	"github.com/sodiqscript111/cNGN-Go/utils"
 )
 
 const BaseURL = "https://api.cngn.co/v1/api"
@@ -46,7 +47,9 @@ func (c *Client) WithSecurity(encryptionKey, privateKey string) *Client {
 }
 
 func FromEnv() (*Client, *cngnErr.Error) {
-	godotenv.Load()
+	if err := godotenv.Load(); err != nil {
+		return nil, cngnErr.NewConfigurationError("failed to load .env: " + err.Error())
+	}
 
 	authToken := os.Getenv("CNGN_KEY")
 	if authToken == "" {
@@ -72,24 +75,9 @@ func FromEnv() (*Client, *cngnErr.Error) {
 func (c *Client) Send(method, path string, query map[string]string, body any, result any) *cngnErr.Error {
 	reqURL := c.baseURL + path
 
-	var reqBody []byte
-	if body != nil {
-		var jsonErr error
-		reqBody, jsonErr = json.Marshal(body)
-		if jsonErr != nil {
-			return cngnErr.NewParseError(jsonErr)
-		}
-
-		if c.hasSecurity && c.encryptionKey != "" {
-			encrypted, cryptErr := utils.AESEncrypt(string(reqBody), c.encryptionKey)
-			if cryptErr != nil {
-				return cryptErr
-			}
-			reqBody, jsonErr = json.Marshal(encrypted)
-			if jsonErr != nil {
-				return cngnErr.NewParseError(jsonErr)
-			}
-		}
+	reqBody, err := c.prepareRequestBody(body)
+	if err != nil {
+		return err
 	}
 
 	req, reqErr := http.NewRequest(method, reqURL, bytes.NewReader(reqBody))
@@ -119,14 +107,42 @@ func (c *Client) Send(method, path string, query map[string]string, body any, re
 		return cngnErr.NewNetworkError(readErr)
 	}
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	return c.processResponse(resp.StatusCode, respBytes, result)
+}
+
+func (c *Client) prepareRequestBody(body any) ([]byte, *cngnErr.Error) {
+	if body == nil {
+		return nil, nil
+	}
+
+	reqBody, jsonErr := json.Marshal(body)
+	if jsonErr != nil {
+		return nil, cngnErr.NewParseError(jsonErr)
+	}
+
+	if c.hasSecurity && c.encryptionKey != "" {
+		encrypted, cryptErr := utils.AESEncrypt(string(reqBody), c.encryptionKey)
+		if cryptErr != nil {
+			return nil, cryptErr
+		}
+		reqBody, jsonErr = json.Marshal(encrypted)
+		if jsonErr != nil {
+			return nil, cngnErr.NewParseError(jsonErr)
+		}
+	}
+
+	return reqBody, nil
+}
+
+func (c *Client) processResponse(statusCode int, respBytes []byte, result any) *cngnErr.Error {
+	if statusCode < 200 || statusCode >= 300 {
 		var errEnv envelope.ErrorEnvelope
 		msg := string(respBytes)
 		if json.Unmarshal(respBytes, &errEnv) == nil {
 			msg = errEnv.Message
 		}
-		kind, field, apiMsg := cngnErr.ClassifyApiError(uint16(resp.StatusCode), msg)
-		return cngnErr.NewApiError(uint16(resp.StatusCode), kind, field, apiMsg)
+		kind, field, apiMsg := cngnErr.ClassifyApiError(uint16(statusCode), msg)
+		return cngnErr.NewApiError(uint16(statusCode), kind, field, apiMsg)
 	}
 
 	responseValue := make(map[string]any)
@@ -174,4 +190,18 @@ func SendRequest[T any](client *Client, method, path string, query map[string]st
 		return nil, err
 	}
 	return result, nil
+}
+
+func sendJSON[T any](client *Client, method, path string, query map[string]string, body any) (T, *cngnErr.Error) {
+	var result T
+	err := client.Send(method, path, query, body, &result)
+	if err != nil {
+		var zero T
+		return zero, err
+	}
+	return result, nil
+}
+
+func fmtUint32(n uint32) string {
+	return strconv.FormatUint(uint64(n), 10)
 }

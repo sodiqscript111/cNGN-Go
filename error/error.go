@@ -1,6 +1,9 @@
 package error
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 type ApiErrorKind int
 
@@ -60,23 +63,6 @@ func (k ApiErrorKind) String() string {
 	default:
 		return "unknown API error"
 	}
-}
-
-type ApiError struct {
-	Status   uint16
-	Kind     ApiErrorKind
-	Field    string
-	Message  string
-}
-
-func (e *ApiError) Error() string {
-	if e.Kind == Validation {
-		return fmt.Sprintf("validation failed: %s: %s", e.Field, e.Message)
-	}
-	if e.Kind == BusinessLogic {
-		return fmt.Sprintf("business logic error: %s", e.Message)
-	}
-	return e.Kind.String()
 }
 
 type ErrorType int
@@ -209,14 +195,9 @@ func ClassifyApiError(status uint16, message string) (ApiErrorKind, string, stri
 }
 
 func classifyBadRequest(message string) (ApiErrorKind, string, string) {
-	for i := 0; i < len(message); i++ {
-		if message[i] == ':' {
-			field := message[:i]
-			msg := message[i+1:]
-			if len(field) > 0 && len(msg) > 0 {
-				return Validation, field, msg
-			}
-		}
+	field, msg, found := strings.Cut(message, ":")
+	if found && field != "" && msg != "" {
+		return Validation, field, msg
 	}
 	return BusinessLogic, "", message
 }
